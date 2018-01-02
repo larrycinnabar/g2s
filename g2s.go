@@ -24,6 +24,7 @@ type Statter interface {
 type Statsd struct {
 	w      io.Writer
 	prefix string
+	debug  bool
 }
 
 // Dial takes the same parameters as net.Dial, ie. a transport protocol
@@ -31,22 +32,34 @@ type Statsd struct {
 // ready to use.
 //
 // Note that g2s currently performs no management on the connection it creates.
-func Dial(proto, endpoint string) (*Statsd, error) {
+func Dial(proto, endpoint string, debugArg ...bool) (*Statsd, error) {
 	c, err := net.DialTimeout(proto, endpoint, 2*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	return New(c, "")
+
+	var debug bool
+	if len(debugArg) > 0 {
+		debug = debugArg[0]
+	}
+
+	return New(c, "", debug)
 }
 
 // Variant of Dial that accepts a prefix that will be prepended to the name of
 // all buckets sent (so it can be used with services that require an API key)
-func DialWithPrefix(proto, endpoint string, prefix string) (*Statsd, error) {
+func DialWithPrefix(proto, endpoint string, prefix string, debugArg ...bool) (*Statsd, error) {
 	c, err := net.DialTimeout(proto, endpoint, 2*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	return New(c, prefix)
+
+	var debug bool
+	if len(debugArg) > 0 {
+		debug = debugArg[0]
+	}
+
+	return New(c, prefix, debug)
 }
 
 // New constructs a Statsd structure which will write statsd-protocol messages
@@ -57,11 +70,12 @@ func DialWithPrefix(proto, endpoint string, prefix string) (*Statsd, error) {
 // Note that g2s provides no synchronization. If you pass an io.Writer which
 // is not goroutine-safe, for example a bytes.Buffer, you must make sure you
 // synchronize your calls to the Statter methods.
-func New(w io.Writer, prefix string) (*Statsd, error) {
+func New(w io.Writer, prefix string, debug bool) (*Statsd, error) {
 	if len(prefix) > 0 && !strings.HasSuffix(prefix, ".") {
 		prefix = fmt.Sprintf("%s.", prefix)
 	}
-	return &Statsd{w: w, prefix: prefix}, nil
+
+	return &Statsd{w: w, prefix: prefix, debug: debug}, nil
 }
 
 // bufferize folds the slice of sendables into a slice of byte-buffers,
@@ -97,10 +111,12 @@ func (s *Statsd) publish(msgs []sendable) {
 		//   -- http://golang.org/pkg/net/#Conn
 		// Otherwise, Bring Your Own Synchronization™.
 		n, err := s.w.Write(buf)
-		if err != nil {
-			log.Printf("g2s: publish: %s", err)
-		} else if n != len(buf) {
-			log.Printf("g2s: publish: short send: %d < %d", n, len(buf))
+		if s.debug {
+			if err != nil {
+				log.Printf("g2s: publish: %s", err)
+			} else if n != len(buf) {
+				log.Printf("g2s: publish: short send: %d < %d", n, len(buf))
+			}
 		}
 	}
 }
