@@ -38,7 +38,7 @@ func Dial(proto, endpoint string, debugArg ...bool) (*Statsd, error) {
 		return nil, err
 	}
 
-	var debug bool
+	var debug bool = true
 	if len(debugArg) > 0 {
 		debug = debugArg[0]
 	}
